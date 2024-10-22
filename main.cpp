@@ -10,9 +10,10 @@
 #include <ctime>
 #include <sstream>
 #include <iomanip>
-#include <unordered_set>  // For unique game detection
+#include <unordered_set>    // For unique game detection
 #include <string>
-#include <sys/stat.h>  // For directory creation
+#include <sys/stat.h>       // For directory creation
+#include <filesystem>       // Required for checking if file exists (C++17 and later)
 
 
 class HexGame {
@@ -301,11 +302,10 @@ std::tuple<int, int, int, int> analyze_game_file(const std::string &filename, co
     return {total_games, unique_games_count, wins_player_X, wins_player_O};
 }
 
-
 // Function to save metadata including removed moves to a separate CSV file
 void save_metadata_with_removed_moves(const std::string &metadata_filename, const std::string &dataset_filename,
                                       int board_dim, int total_games, int unique_games, int wins_player_X,
-                                      int wins_player_O, const std::string &format, const std::string &timestamp,
+                                      int wins_player_O, const std::string &format,
                                       const std::vector<std::vector<int>>& removed_moves_per_game, int moves_before_end) {
     std::ofstream outfile(metadata_filename);
     if (!outfile.is_open()) {
@@ -324,7 +324,6 @@ void save_metadata_with_removed_moves(const std::string &metadata_filename, cons
             << wins_player_X << ","
             << wins_player_O << ","
             << format << ","
-            << timestamp << ","
             << moves_before_end << ",";
 
     // Write removed moves for each game
@@ -364,129 +363,160 @@ bool ensure_directory_exists(const std::string &directory) {
 }
 
 int main() {
+    setvbuf(stdout, NULL, _IONBF, 0);  // Disable output buffering
     srand(time(nullptr));
-    int total_games = 200000;
-    int batch_size = total_games / 1;
-    int min_board_dim = 3;
-    int max_board_dim = 15;
-    std::string format = "coord";
-    int moves_before_end = 0;
 
     // Ensure 'data' and 'metadata' directories exist
-    ensure_directory_exists("data");
-    ensure_directory_exists("metadata");
+    ensure_directory_exists("B:\\TsetlinModels\\data");
+    ensure_directory_exists("B:\\TsetlinModels\\metadata");
 
-    for (int board_dim = min_board_dim; board_dim <= max_board_dim; ++board_dim) {
-        HexGame hg(board_dim);
-        std::string filename = "data/";
-        filename += std::to_string(board_dim);
-        filename += "x" + std::to_string(board_dim);
-        filename += "_" + std::to_string(total_games);
-        filename += "_" + format;
-        filename += "_" + generate_timestamp();
-        filename += "_" + std::to_string(moves_before_end);
-        filename += ".csv";
+    int min_board_dim = 13;
+    int max_board_dim = 16;
+    std::string format = "coord";
 
-        // Write the CSV header
-        std::ofstream outfile(filename);
-        if (format == "coord") {
-            // Write the CSV header
-            for (int i = 0; i < board_dim; ++i) {
-                for (int j = 0; j < board_dim; ++j) {
-                    outfile << "cell" << i << "_" << j << ",";
+    float open_pos_list[] = {0.4, 0.5, 0.6};
+    int total_games_list[] = {2000, 20000, 200000};
+    int mbf_list[] = {0,2,5};
+
+for (int open_pos_index = 0; open_pos_index < 3; open_pos_index++) {
+    float n_open_pos = open_pos_list[open_pos_index];
+    for (int total_games_index = 0; total_games_index < 3; ++total_games_index) {
+        int total_games = total_games_list[total_games_index];
+
+        for (int mbf_index = 0; mbf_index < 3; mbf_index++) {
+            int moves_before_end = mbf_list[mbf_index];
+
+            for (int board_dim = min_board_dim; board_dim <= max_board_dim; ++board_dim) {
+                HexGame hg(board_dim);
+                int open_pos = board_dim * board_dim * n_open_pos;
+
+                bool file_created = false;
+                std::string filename;
+
+                // Create the filename ONCE per combination of board_dim, total_games, n_open_pos, etc.
+                filename = "B:\\TsetlinModels\\data\\";
+                filename += std::to_string(board_dim);
+                filename += "x" + std::to_string(board_dim);
+                filename += "_" + std::to_string(total_games);
+                filename += "_" + std::to_string(static_cast<int>(n_open_pos * 100));
+                filename += "_" + std::to_string(moves_before_end);
+                filename += ".csv";
+                std::cout << "Constructed filename: " << filename << std::endl;
+
+                if (std::filesystem::exists(filename)) {
+                    std::cout << "File exists, skipping: " << filename << std::endl;
+                    continue;  // Skip to the next iteration if file exists
+                }
+
+                // Create and open the file once for writing header
+                std::ofstream outfile(filename);
+                if (outfile.is_open()) {
+                    if (format == "coord") {
+                        for (int i = 0; i < board_dim; ++i) {
+                            for (int j = 0; j < board_dim; ++j) {
+                                outfile << "cell" << i << "_" << j << ",";
+                            }
+                        }
+                        outfile << "winner" << std::endl;
+                    } else {
+                        outfile << "board,winner\n";
+                    }
+                    outfile.close();
+                    file_created = true;
+                } else {
+                    std::cerr << "Error opening file: " << filename << std::endl;
+                    continue;  // Skip this combination if the file could not be created
+                }
+
+                int valid_games = 0;
+                int batch_size = total_games / 1;
+                int empty_runs = 0;
+                std::vector<std::pair<std::string, int>> game_results_string;
+                std::vector<std::pair<std::vector<int>, int>> game_results_coord;
+                std::vector<std::vector<int>> removed_moves_per_game;
+
+                // Process the games
+                while (valid_games < total_games) {
+                    hg.init();
+                    int player = 0;
+                    int winner = -1;
+
+                    // Simulate the game
+                    while (!hg.full_board()) {
+                        int position = hg.place_piece_randomly(player);
+
+                        if (hg.winner(player, position)) {
+                            winner = player;
+                            break;
+                        }
+                        player = 1 - player;
+                    }
+
+                    if (hg.number_of_open_positions >= open_pos) {
+                        // Valid game, remove last moves and store results
+                        std::vector<int> removed_moves = hg.remove_last_n_moves(moves_before_end);
+                        removed_moves_per_game.push_back(removed_moves);  // Track removed moves
+
+                        if (format == "coord") {
+                            game_results_coord.emplace_back(hg.board_to_coord(), winner);
+                        } else {
+                            game_results_string.emplace_back(hg.board_to_string(), winner);
+                        }
+
+                        valid_games++;
+
+                        // Write results to file in batches
+                        if (format == "coord" && game_results_coord.size() >= batch_size) {
+                            std::ofstream outfile(filename, std::ios::app);
+                            for (const auto& result : game_results_coord) {
+                                hg.write_coord_game_to_csv(outfile, result.first, result.second);
+                            }
+                            game_results_coord.clear();
+                            outfile.close();
+                            std::cout << "1 Writing to " << board_dim << "x" << board_dim << std::endl;
+                        } else if (game_results_string.size() >= batch_size) {
+                            std::ofstream outfile(filename, std::ios::app);
+                            for (const auto& result : game_results_string) {
+                                hg.write_game_to_csv(outfile, format, result);
+                            }
+                            game_results_string.clear();
+                            outfile.close();
+                            std::cout << "2 Writing to " << board_dim << "x" << board_dim << std::endl;
+                        }
+                    } else {
+                        empty_runs++;
+                    }
+                }
+
+                // Write remaining results at the end
+                if (!game_results_coord.empty() && format == "coord") {
+                    std::ofstream outfile(filename, std::ios::app);
+                    for (const auto& result : game_results_coord) {
+                        hg.write_coord_game_to_csv(outfile, result.first, result.second);
+                    }
+                    outfile.close();
+                    std::cout << "3 Writing to " << board_dim << "x" << board_dim << std::endl;
+                } else if (!game_results_string.empty()) {
+                    std::ofstream outfile(filename, std::ios::app);
+                    for (const auto& result : game_results_string) {
+                        hg.write_game_to_csv(outfile, format, result);
+                    }
+                    outfile.close();
+                    std::cout << "4 Writing to " << board_dim << "x" << board_dim << std::endl;
+                }
+
+                // Analyze the file to get metadata
+                if (!filename.empty()) {
+                    auto [total_games, unique_games, wins_player_X, wins_player_O] = analyze_game_file(filename, format);
+                    std::string metadata_filename = "B:\\TsetlinModels\\metadata\\metadata_" + filename.substr(filename.find_last_of("\\") + 1);
+                    std::cout << "Metadata filename: " << metadata_filename << std::endl;
+
+                    //std::string detailed_timestamp = generate_timestamp(true);
+                    save_metadata_with_removed_moves(metadata_filename, filename, board_dim, total_games, unique_games, wins_player_X, wins_player_O, format, removed_moves_per_game, moves_before_end);
                 }
             }
-            outfile << "winner" << std::endl;
-        } else {
-            outfile << "board,winner" << "\n";
         }
-        outfile.close();
-
-        int winner = -1;
-
-        // Store the game results in memory
-        std::vector<std::pair<std::string, int>> game_results_string;
-        std::vector<std::pair<std::vector<int>, int>> game_results_coord;
-        std::vector<std::vector<int>> removed_moves_per_game;
-
-        for (int game = 0; game < total_games; ++game) {
-            hg.init();
-
-            int player = 0;
-            //int move_count = 0;
-
-            while (!hg.full_board()) {
-                int position = hg.place_piece_randomly(player);
-                //move_count++;
-
-                if (hg.winner(player, position)) {
-                    winner = player;
-                    break;
-                }
-
-                player = 1 - player;
-            }
-
-            // Remove the last 'moves_before_end' moves and store removed moves
-            std::vector<int> removed_moves = hg.remove_last_n_moves(moves_before_end);
-            removed_moves_per_game.push_back(removed_moves);  // Track the removed moves
-
-            // Store results in memory depending on the format
-            if (format == "coord") {
-                game_results_coord.emplace_back(hg.board_to_coord(), winner);
-            } else {
-                game_results_string.emplace_back(hg.board_to_string(), winner);
-            }
-
-            // Write results to file in batches
-            if (format == "coord" && game_results_coord.size() >= batch_size) {
-                std::ofstream outfile(filename, std::ios::app);
-                for (const auto& result : game_results_coord) {
-                    hg.write_coord_game_to_csv(outfile, result.first, result.second);
-                }
-                game_results_coord.clear();
-                outfile.close();
-                std::cout << "Writing to " << board_dim << "x" << board_dim << std::endl;
-            } else if (game_results_string.size() >= batch_size) {
-                std::ofstream outfile(filename, std::ios::app);
-                for (const auto& result : game_results_string) {
-                    hg.write_game_to_csv(outfile, format, result);
-                }
-                game_results_string.clear();
-                outfile.close();
-                std::cout << "Writing to " << format << std::endl;
-            }
-
-        }
-
-        // Write remaining results at the end
-        if (!game_results_coord.empty() && format == "coord") {
-            std::ofstream outfile(filename, std::ios::app);
-            for (const auto& result : game_results_coord) {
-                hg.write_coord_game_to_csv(outfile, result.first, result.second);
-            }
-            outfile.close();
-            std::cout << "Writing to " << format << std::endl;
-        } else if (!game_results_string.empty()) {
-            std::ofstream outfile(filename, std::ios::app);
-            for (const auto& result : game_results_string) {
-                hg.write_game_to_csv(outfile, format, result);
-            }
-            outfile.close();
-            std::cout << "Writing to " << format << std::endl;
-        }
-
-
-        // Analyze the file to get metadata
-        auto [total_games, unique_games, wins_player_X, wins_player_O] = analyze_game_file(filename, format);
-
-        // Save the metadata with the removed moves
-        std::string metadata_filename = "metadata/metadata_" + filename.substr(5);
-        std::string detailed_timestamp = generate_timestamp(true);
-        save_metadata_with_removed_moves(metadata_filename, filename.substr(5), board_dim, total_games, unique_games, wins_player_X, wins_player_O, format, detailed_timestamp, removed_moves_per_game, moves_before_end);
     }
-
-
-
+}
     return 0;
 }
