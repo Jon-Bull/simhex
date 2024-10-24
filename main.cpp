@@ -1,6 +1,32 @@
-//
-// Created by jonal on 18.10.2024.
-//
+// Original code provided by Professor Ole-Christoffer Granmo (2024) in the course IKT457 Learning Systems at University of Agder:
+// Copyright (c) 2024 Ole-Christoffer Granmo
+
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+// Modifications made by Jon A B Larssen to extend functionality for logging,
+// generating CSV data, and analyzing unique games. New functionality includes:
+// - Expanded board initialization and flexible dimension handling.
+// - Game move logging, allowing for removal of the last N moves.
+// - Generation and saving of board states in CSV format in both "coord" and regular formats.
+// - Metadata analysis of games including winner statistics, unique game counting, and move removal logging.
+// - Directory and file management to ensure data is saved correctly.
+
 
 #include <chrono>
 #include <iostream>
@@ -379,17 +405,18 @@ int main() {
     float open_pos_list[] = {0.1,0.2,0.3,0.4,0.5};
     int mbf_list[] = {0,2,5};
 
-    for (int total_games_index = 0; total_games_index < 3; ++total_games_index) {
-        int total_games = total_games_list[total_games_index];
 
-        for (int board_dim = min_board_dim; board_dim <= max_board_dim; ++board_dim) {
 
-            for (int open_pos_index = 0; open_pos_index < 6; open_pos_index++) {
-                float n_open_pos = open_pos_list[open_pos_index];
+    for (int open_pos_index = 0; open_pos_index < 5; open_pos_index++) {
+        float n_open_pos = open_pos_list[open_pos_index];
+
+        for (int total_games_index = 0; total_games_index < 3; ++total_games_index) {
+            int total_games = total_games_list[total_games_index];
+
+            for (int board_dim = min_board_dim; board_dim <= max_board_dim; ++board_dim) {
 
                 for (int mbf_index = 0; mbf_index < 3; mbf_index++) {
                     int moves_before_end = mbf_list[mbf_index];
-
 
                     HexGame hg(board_dim);
                     int open_pos = board_dim * board_dim * n_open_pos;
