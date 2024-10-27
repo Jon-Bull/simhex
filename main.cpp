@@ -208,12 +208,12 @@ public:
 
     }
 
-    void write_coord_game_to_csv(std::ofstream &outfile, const std::vector<int>& board_values, int winner) {
+    void write_coord_game_to_csv(std::ofstream &outfile, const std::vector<int>& board_values, int starting_player, int winner) {
         for (int value : board_values) {
             outfile << value << ",";
         }
         // Write the winner at the end
-        outfile << winner << "\n";
+        outfile << starting_player << "," << winner << "\n";
     }
 
     void print() {
@@ -400,20 +400,18 @@ int main() {
 
 
     int total_games_list[] = {2000, 20000, 200000};
-    int min_board_dim = 7;
-    int max_board_dim = 16;
-    float open_pos_list[] = {0.1,0.2,0.3,0.4,0.5};
+    int min_board_dim = 5;
+    int max_board_dim = 15;
+    float open_pos_list[] = {0.1,0.2,0.3,0.4};
     int mbf_list[] = {0,2,5};
 
+    for (int board_dim = min_board_dim; board_dim <= max_board_dim; ++board_dim) {
 
+        for (int open_pos_index = 0; open_pos_index < 5; open_pos_index++) {
+            float n_open_pos = open_pos_list[open_pos_index];
 
-    for (int open_pos_index = 0; open_pos_index < 5; open_pos_index++) {
-        float n_open_pos = open_pos_list[open_pos_index];
-
-        for (int total_games_index = 0; total_games_index < 3; ++total_games_index) {
-            int total_games = total_games_list[total_games_index];
-
-            for (int board_dim = min_board_dim; board_dim <= max_board_dim; ++board_dim) {
+            for (int total_games_index = 0; total_games_index < 3; ++total_games_index) {
+                int total_games = total_games_list[total_games_index];
 
                 for (int mbf_index = 0; mbf_index < 3; mbf_index++) {
                     int moves_before_end = mbf_list[mbf_index];
@@ -451,9 +449,9 @@ int main() {
                                     outfile << "cell" << i << "_" << j << ",";
                                 }
                             }
-                            outfile << "winner" << std::endl;
+                            outfile << "starting_player,winner" << std::endl;
                         } else {
-                            outfile << "board,winner\n";
+                            outfile << "board,starting_player,winner\n";
                         }
                         outfile.close();
                         file_created = true;
@@ -465,14 +463,15 @@ int main() {
                     int valid_games = 0;
                     int batch_size = total_games / 1;
                     int empty_runs = 0;
-                    std::vector<std::pair<std::string, int>> game_results_string;
-                    std::vector<std::pair<std::vector<int>, int>> game_results_coord;
+                    std::vector<std::pair<std::string, std::pair<int, int>>> game_results_string;
+                    std::vector<std::pair<std::vector<int>, std::pair<int, int>>> game_results_coord;
                     std::vector<std::vector<int>> removed_moves_per_game;
 
                     // Process the games
                     while (valid_games < total_games) {
                         hg.init();
-                        int player = 0;
+                        int starting_player = rand() % 2;  // 0 for Player X, 1 for Player O
+                        int player = starting_player;
                         int winner = -1;
 
                         // Simulate the game
@@ -491,10 +490,12 @@ int main() {
                             std::vector<int> removed_moves = hg.remove_last_n_moves(moves_before_end);
                             removed_moves_per_game.push_back(removed_moves);  // Track removed moves
 
+                            std::pair<int, int> outcome = {starting_player, winner};
+
                             if (format == "coord") {
-                                game_results_coord.emplace_back(hg.board_to_coord(), winner);
+                                game_results_coord.emplace_back(hg.board_to_coord(), outcome);
                             } else {
-                                game_results_string.emplace_back(hg.board_to_string(), winner);
+                                game_results_string.emplace_back(hg.board_to_string(), outcome);
                             }
 
                             valid_games++;
@@ -503,7 +504,7 @@ int main() {
                             if (format == "coord" && game_results_coord.size() >= batch_size) {
                                 std::ofstream outfile(filename, std::ios::app);
                                 for (const auto& result : game_results_coord) {
-                                    hg.write_coord_game_to_csv(outfile, result.first, result.second);
+                                    hg.write_coord_game_to_csv(outfile, result.first, result.second.first, result.second.second);
                                 }
                                 game_results_coord.clear();
                                 outfile.close();
@@ -536,7 +537,8 @@ int main() {
                             } else if (game_results_string.size() >= batch_size) {
                                 std::ofstream outfile(filename, std::ios::app);
                                 for (const auto& result : game_results_string) {
-                                    hg.write_game_to_csv(outfile, format, result);
+                                    hg.write_game_to_csv(outfile, format, {result.first, result.second.second});  // Only winner passed
+                                    outfile << result.second.first << "," << result.second.second << "\n";  // Append starting player
                                 }
                                 game_results_string.clear();
                                 outfile.close();
@@ -551,14 +553,15 @@ int main() {
                     if (!game_results_coord.empty() && format == "coord") {
                         std::ofstream outfile(filename, std::ios::app);
                         for (const auto& result : game_results_coord) {
-                            hg.write_coord_game_to_csv(outfile, result.first, result.second);
+                            hg.write_coord_game_to_csv(outfile, result.first, result.second.first, result.second.second);
                         }
                         outfile.close();
                         std::cout << "3 Writing to " << board_dim << "x" << board_dim << std::endl;
                     } else if (!game_results_string.empty()) {
                         std::ofstream outfile(filename, std::ios::app);
                         for (const auto& result : game_results_string) {
-                            hg.write_game_to_csv(outfile, format, result);
+                            hg.write_game_to_csv(outfile, format, {result.first, result.second.second});
+                            outfile << result.second.first << "," << result.second.second << "\n";
                         }
                         outfile.close();
                         std::cout << "4 Writing to " << board_dim << "x" << board_dim << std::endl;
