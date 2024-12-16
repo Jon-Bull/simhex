@@ -393,27 +393,28 @@ int main() {
     srand(time(nullptr));
 
     // Ensure 'data' and 'metadata' directories exist
-    ensure_directory_exists("B:\\TsetlinModels\\data");
-    ensure_directory_exists("B:\\TsetlinModels\\metadata");
+    ensure_directory_exists("F:\\TsetlinModels\\data");
+    ensure_directory_exists("F:\\TsetlinModels\\metadata");
 
     std::string format = "coord";
 
 
-    int total_games_list[] = {2000, 20000, 200000};
-    int min_board_dim = 5;
+    int total_games_list[] = {2000, 20000, 200000}; //,
+    int min_board_dim = 4;
     int max_board_dim = 15;
-    float open_pos_list[] = {0.1,0.2,0.3,0.4};
-    int mbf_list[] = {0,2,5};
+    float open_pos_list[] = {0.1,0.2,0.3,0.4}; // 0.00,0.05,0.1,0.15,0.2,0.25,0.3,0.35,0.4,0.45,,0.5
+    int mbf_list[] = {0}; //,2,5
 
-    for (int board_dim = min_board_dim; board_dim <= max_board_dim; ++board_dim) {
 
-        for (int open_pos_index = 0; open_pos_index < 5; open_pos_index++) {
-            float n_open_pos = open_pos_list[open_pos_index];
+    for (int total_games_index = 0; total_games_index < 3; ++total_games_index) {
+        int total_games = total_games_list[total_games_index];
 
-            for (int total_games_index = 0; total_games_index < 3; ++total_games_index) {
-                int total_games = total_games_list[total_games_index];
+        for (int board_dim = min_board_dim; board_dim <= max_board_dim; ++board_dim) {
 
-                for (int mbf_index = 0; mbf_index < 3; mbf_index++) {
+            for (int open_pos_index = 0; open_pos_index < 4; open_pos_index++) {
+                float n_open_pos = open_pos_list[open_pos_index];
+
+                for (int mbf_index = 0; mbf_index < 1; mbf_index++) {
                     int moves_before_end = mbf_list[mbf_index];
 
                     HexGame hg(board_dim);
@@ -426,7 +427,7 @@ int main() {
                     std::string filename;
 
                     // Create the filename ONCE per combination of board_dim, total_games, n_open_pos, etc.
-                    filename = "B:\\TsetlinModels\\data\\";
+                    filename = "F:\\TsetlinModels\\data\\";
                     filename += std::to_string(board_dim);
                     filename += "x" + std::to_string(board_dim);
                     filename += "_" + std::to_string(total_games);
@@ -460,6 +461,7 @@ int main() {
                         continue;  // Skip this combination if the file could not be created
                     }
 
+                    std::unordered_set<std::string> unique_games; // Set to track unique games
                     int valid_games = 0;
                     int batch_size = total_games / 1;
                     int empty_runs = 0;
@@ -469,6 +471,7 @@ int main() {
 
                     // Process the games
                     while (valid_games < total_games) {
+                        //std::cout << "Valid games: " << valid_games << " | Empty runs: " << empty_runs << std::endl;
                         hg.init();
                         int starting_player = rand() % 2;  // 0 for Player X, 1 for Player O
                         int player = starting_player;
@@ -492,57 +495,66 @@ int main() {
 
                             std::pair<int, int> outcome = {starting_player, winner};
 
-                            if (format == "coord") {
-                                game_results_coord.emplace_back(hg.board_to_coord(), outcome);
-                            } else {
-                                game_results_string.emplace_back(hg.board_to_string(), outcome);
-                            }
+                            std::string board_state = hg.board_to_string();
 
-                            valid_games++;
+                            // Ensure uniqueness
+                            if (unique_games.find(board_state) == unique_games.end()) {
+                                unique_games.insert(board_state); 
 
-                            // Write results to file in batches
-                            if (format == "coord" && game_results_coord.size() >= batch_size) {
-                                std::ofstream outfile(filename, std::ios::app);
-                                for (const auto& result : game_results_coord) {
-                                    hg.write_coord_game_to_csv(outfile, result.first, result.second.first, result.second.second);
+                                if (format == "coord") {
+                                    game_results_coord.emplace_back(hg.board_to_coord(), outcome);
+                                } else {
+                                    game_results_string.emplace_back(board_state, outcome);
                                 }
-                                game_results_coord.clear();
-                                outfile.close();
-                                std::cout << " - Writing to " << board_dim << "x" << board_dim;
 
-                                // Measure time after writing
-                                auto end = std::chrono::high_resolution_clock::now();
-                                std::chrono::duration<double> elapsed = end - start;
-
-                                // Calculate hours, minutes, and seconds
-                                int hours = static_cast<int>(elapsed.count() / 3600);
-                                int minutes = static_cast<int>((elapsed.count() - (hours * 3600)) / 60);
-                                int seconds = static_cast<int>(elapsed.count()) % 60;
-
-                                // Get the current system time
-                                auto current_time = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-                                std::tm* time_info = std::localtime(&current_time);
-
-                                std::cout << " - " << std::setw(2) << std::setfill('0') << time_info->tm_hour
-                                          << ":" << std::setw(2) << std::setfill('0') << time_info->tm_min
-                                          << ":" << std::setw(2) << std::setfill('0') << time_info->tm_sec;
-
-                                // Format and display elapsed time and current time
-                                std::cout << " - " << std::setw(2) << std::setfill('0') << hours
-                                          << ":" << std::setw(2) << std::setfill('0') << minutes
-                                          << ":" << std::setw(2) << std::setfill('0') << seconds << std::endl;
+                                valid_games++;
 
 
 
-                            } else if (game_results_string.size() >= batch_size) {
-                                std::ofstream outfile(filename, std::ios::app);
-                                for (const auto& result : game_results_string) {
-                                    hg.write_game_to_csv(outfile, format, {result.first, result.second.second});  // Only winner passed
-                                    outfile << result.second.first << "," << result.second.second << "\n";  // Append starting player
+                                // Write results to file in batches
+                                if (format == "coord" && game_results_coord.size() >= batch_size) {
+                                    std::ofstream outfile(filename, std::ios::app);
+                                    for (const auto& result : game_results_coord) {
+                                        hg.write_coord_game_to_csv(outfile, result.first, result.second.first, result.second.second);
+                                    }
+                                    game_results_coord.clear();
+                                    outfile.close();
+                                    std::cout << " - Writing to " << board_dim << "x" << board_dim;
+
+                                    // Measure time after writing
+                                    auto end = std::chrono::high_resolution_clock::now();
+                                    std::chrono::duration<double> elapsed = end - start;
+
+                                    // Calculate hours, minutes, and seconds
+                                    int hours = static_cast<int>(elapsed.count() / 3600);
+                                    int minutes = static_cast<int>((elapsed.count() - (hours * 3600)) / 60);
+                                    int seconds = static_cast<int>(elapsed.count()) % 60;
+
+                                    // Get the current system time
+                                    auto current_time = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+                                    std::tm* time_info = std::localtime(&current_time);
+
+                                    std::cout << " - " << std::setw(2) << std::setfill('0') << time_info->tm_hour
+                                              << ":" << std::setw(2) << std::setfill('0') << time_info->tm_min
+                                              << ":" << std::setw(2) << std::setfill('0') << time_info->tm_sec;
+
+                                    // Format and display elapsed time and current time
+                                    std::cout << " - " << std::setw(2) << std::setfill('0') << hours
+                                              << ":" << std::setw(2) << std::setfill('0') << minutes
+                                              << ":" << std::setw(2) << std::setfill('0') << seconds << std::endl;
+
+
+
+                                } else if (game_results_string.size() >= batch_size) {
+                                    std::ofstream outfile(filename, std::ios::app);
+                                    for (const auto& result : game_results_string) {
+                                        hg.write_game_to_csv(outfile, format, {result.first, result.second.second});  // Only winner passed
+                                        outfile << result.second.first << "," << result.second.second << "\n";  // Append starting player
+                                    }
+                                    game_results_string.clear();
+                                    outfile.close();
+                                    std::cout << "2 Writing to " << board_dim << "x" << board_dim << std::endl;
                                 }
-                                game_results_string.clear();
-                                outfile.close();
-                                std::cout << "2 Writing to " << board_dim << "x" << board_dim << std::endl;
                             }
                         } else {
                             empty_runs++;
@@ -570,7 +582,7 @@ int main() {
                     // Analyze the file to get metadata
                     if (!filename.empty()) {
                         auto [total_games, unique_games, wins_player_X, wins_player_O] = analyze_game_file(filename, format);
-                        std::string metadata_filename = "B:\\TsetlinModels\\metadata\\metadata_" + filename.substr(filename.find_last_of("\\") + 1);
+                        std::string metadata_filename = "F:\\TsetlinModels\\metadata\\metadata_" + filename.substr(filename.find_last_of("\\") + 1);
                         std::cout << "Metadata filename: " << metadata_filename << std::endl;
 
                         //std::string detailed_timestamp = generate_timestamp(true);
